@@ -13,22 +13,17 @@
     "declarativeNetRequestFeedback",
     "storage",
     "alarms",
-    "tabs"
+    "tabs",
+    "scripting",
+    "activeTab"
   ],
   "host_permissions": [
-    "*://*.instagram.com/*",
-    "*://*.twitter.com/*",
-    "*://*.x.com/*",
-    "*://*.reddit.com/*",
-    "*://*.youtube.com/*",
-    "*://*.tiktok.com/*",
-    "*://*.facebook.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png"

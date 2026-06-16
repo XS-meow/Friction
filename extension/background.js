@@ -319,3 +319,25 @@ chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener((info) => {
   }
 });
 
+// ── In-Page Panel (Content Script Injection) ─────────────────
+
+// When extension icon is clicked, inject the floating panel into the active tab
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+
+  // Skip chrome:// and other protected pages
+  if (!tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
+    console.log("[Friction] Cannot inject into this page:", tab.url);
+    return;
+  }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
+    console.log("[Friction] Panel injected into tab:", tab.id);
+  } catch (err) {
+    console.error("[Friction] Failed to inject panel:", err);
+  }
+});

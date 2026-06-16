@@ -14,6 +14,7 @@
   const timerValue = document.getElementById("timer-value");
   const btnStart = document.getElementById("btn-start");
   const btnEnd = document.getElementById("btn-end");
+  const btnDetach = document.getElementById("btn-detach");
   const distractionsCount = document.getElementById("distractions-count");
   const overridesCount = document.getElementById("overrides-count");
 
@@ -35,6 +36,7 @@
       timerDisplay.classList.add("visible");
       btnStart.classList.add("hidden");
       btnEnd.classList.remove("hidden");
+      btnDetach.classList.add("visible");
 
       const remaining = session.endTime - Date.now();
       timerValue.textContent = formatTime(remaining);
@@ -45,6 +47,7 @@
       timerDisplay.classList.remove("visible");
       btnStart.classList.remove("hidden");
       btnEnd.classList.add("hidden");
+      btnDetach.classList.remove("visible");
     }
   }
 
@@ -86,7 +89,7 @@
     setInterval(refresh, 1000);
   }
 
-  // ── Actions (attached via addEventListener, not inline onclick) ─
+  // ── Actions (attached via addEventListener) ───────────────
   btnStart.addEventListener("click", function () {
     btnStart.disabled = true;
     btnStart.textContent = "Starting...";
@@ -121,6 +124,15 @@
       updateUI(session);
       btnEnd.disabled = false;
       btnEnd.textContent = "■ End session";
+    });
+  });
+
+  // Detach timer — opens a mini floating widget
+  btnDetach.addEventListener("click", function () {
+    chrome.runtime.sendMessage({ action: "openWidget" }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("[Friction Popup]", chrome.runtime.lastError.message);
+      }
     });
   });
 

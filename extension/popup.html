@@ -15,8 +15,8 @@
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      width: 320px;
-      min-height: 200px;
+      width: 100%;
+      min-height: 100vh;
       background: #0f0f14;
       color: #e4e4e7;
       overflow: hidden;
@@ -144,6 +144,33 @@
       margin-top: 0.25rem;
     }
 
+    /* Detach timer button */
+    .btn-detach {
+      display: none;
+      margin: 0.5rem auto 0;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      background: rgba(124, 58, 237, 0.1);
+      border: 1px solid rgba(124, 58, 237, 0.2);
+      color: #a78bfa;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-detach.visible {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .btn-detach:hover {
+      background: rgba(124, 58, 237, 0.2);
+      color: #c4b5fd;
+    }
+
     /* Stats row */
     .stats-row {
       display: flex;
@@ -238,6 +265,7 @@
       <div class="timer-display" id="timer-display">
         <div class="timer-value" id="timer-value">00:00</div>
         <div class="timer-label">remaining</div>
+        <button class="btn-detach" id="btn-detach">⇗ Pop out timer</button>
       </div>
     </div>
 

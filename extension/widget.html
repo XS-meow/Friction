@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Friction Timer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0a0f;
+      color: #e4e4e7;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .widget {
+      text-align: center;
+      padding: 0.5rem 1rem;
+      width: 100%;
+    }
+
+    .timer {
+      font-size: 2.4rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #7c3aed, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+
+    .label {
+      font-size: 0.65rem;
+      color: #52525b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.25rem;
+    }
+
+    .inactive-msg {
+      font-size: 0.85rem;
+      color: #71717a;
+      display: none;
+    }
+
+    .inactive-msg.visible {
+      display: block;
+    }
+
+    .timer-wrap {
+      display: none;
+    }
+
+    .timer-wrap.visible {
+      display: block;
+    }
+
+    /* Subtle pulse on the gradient */
+    @keyframes shimmer {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.15); }
+    }
+
+    .timer {
+      animation: shimmer 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget">
+    <div class="timer-wrap" id="timer-wrap">
+      <div class="timer" id="timer">00:00</div>
+      <div class="label">remaining</div>
+    </div>
+    <div class="inactive-msg" id="inactive-msg">No active session</div>
+  </div>
+
+  <script src="widget.js"></script>
+</body>
+</html>
