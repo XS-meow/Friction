@@ -9,15 +9,8 @@
 
   // Prevent double-injection
   if (window.__frictionPanelInjected) {
-    // Toggle visibility
-    const existing = document.getElementById("friction-root");
-    if (existing) {
-      const panel = existing.shadowRoot.getElementById("friction-panel");
-      if (panel) {
-        const isHidden = panel.style.display === "none";
-        panel.style.display = isHidden ? "flex" : "none";
-      }
-    }
+    // The panel is already injected. State changes (like clicking the extension icon) 
+    // are handled by chrome.storage.onChanged. We just exit.
     return;
   }
   window.__frictionPanelInjected = true;
@@ -47,6 +40,10 @@
       top: 16px;
       right: 16px;
       width: 300px;
+      min-width: 260px;
+      min-height: 200px;
+      max-width: 95vw;
+      max-height: 95vh;
       background: #0f0f14;
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 16px;
@@ -59,6 +56,7 @@
       flex-direction: column;
       backdrop-filter: blur(20px);
       animation: panelIn 0.25s ease-out;
+      resize: both;
     }
 
     @keyframes panelIn {
@@ -76,6 +74,7 @@
       user-select: none;
       border-bottom: 1px solid rgba(255,255,255,0.06);
       background: rgba(255,255,255,0.02);
+      flex-shrink: 0;
     }
 
     .header:active { cursor: grabbing; }
@@ -127,6 +126,8 @@
     /* ── Body ─────────────────────────────────────────────── */
     .body {
       padding: 0.85rem 1rem;
+      flex: 1;
+      overflow-y: auto;
     }
 
     /* ── Status ───────────────────────────────────────────── */
@@ -409,13 +410,62 @@
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
 
+  // ── State Sync ─────────────────────────────────────────────
+  let currentState = {
+    isVisible: true,
+    mode: 'full',
+    position: { top: '16px', left: 'auto', right: '16px' },
+    widgetPosition: { top: 'auto', left: 'auto', bottom: '20px', right: '20px' }
+  };
+
+  function applyState(state) {
+    if (!state) return;
+    currentState = { ...currentState, ...state };
+
+    if (!currentState.isVisible) {
+      panel.style.display = 'none';
+      widget.classList.remove('visible');
+      return;
+    }
+
+    if (currentState.mode === 'mini') {
+      panel.style.display = 'none';
+      widget.classList.add('visible');
+    } else {
+      widget.classList.remove('visible');
+      panel.style.display = 'flex';
+    }
+
+    Object.assign(panel.style, currentState.position);
+    Object.assign(widget.style, currentState.widgetPosition);
+  }
+
+  function saveState(updates) {
+    currentState = { ...currentState, ...updates };
+    chrome.storage.local.set({ frictionPanelState: currentState });
+  }
+
+  // Initial load
+  chrome.storage.local.get("frictionPanelState", (data) => {
+    if (data.frictionPanelState) {
+      applyState(data.frictionPanelState);
+    }
+  });
+
+  // Listen for changes from other tabs
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.frictionPanelState && changes.frictionPanelState.newValue) {
+      applyState(changes.frictionPanelState.newValue);
+    }
+  });
+
   // ── Drag Logic ─────────────────────────────────────────────
-  function makeDraggable(handle, target) {
+  function makeDraggable(handle, target, isWidget) {
     let isDragging = false;
     let offsetX = 0, offsetY = 0;
 
     handle.addEventListener("mousedown", (e) => {
-      if (e.target.tagName === "BUTTON") return; // Don't drag when clicking buttons
+      if (e.target.tagName === "BUTTON") return;
       isDragging = true;
       const rect = target.getBoundingClientRect();
       offsetX = e.clientX - rect.left;
@@ -428,8 +478,8 @@
       if (!isDragging) return;
       const x = e.clientX - offsetX;
       const y = e.clientY - offsetY;
-      target.style.left = Math.max(0, Math.min(x, window.innerWidth - 100)) + "px";
-      target.style.top = Math.max(0, Math.min(y, window.innerHeight - 50)) + "px";
+      target.style.left = Math.max(0, Math.min(x, window.innerWidth - target.offsetWidth)) + "px";
+      target.style.top = Math.max(0, Math.min(y, window.innerHeight - target.offsetHeight)) + "px";
       target.style.right = "auto";
       target.style.bottom = "auto";
     });
@@ -438,12 +488,78 @@
       if (isDragging) {
         isDragging = false;
         handle.style.cursor = "grab";
+        
+        // Save new position
+        const pos = {
+          top: target.style.top,
+          left: target.style.left,
+          right: 'auto',
+          bottom: 'auto'
+        };
+        
+        if (isWidget) {
+          saveState({ widgetPosition: pos });
+        } else {
+          saveState({ position: pos });
+        }
       }
     });
   }
 
-  makeDraggable(dragHandle, panel);
-  makeDraggable(widget, widget);
+  makeDraggable(dragHandle, panel, false);
+  makeDraggable(widget, widget, true);
+
+  // Sync size changes
+  const resizeObserver = new ResizeObserver((entries) => {
+    for (let entry of entries) {
+      if (entry.target === panel) {
+        saveState({
+          position: {
+            ...currentState.position,
+            width: panel.style.width,
+            height: panel.style.height
+          }
+        });
+      }
+    }
+  });
+  resizeObserver.observe(panel);
+
+  // ── Favicon Overwrite ──────────────────────────────────────
+  let originalFavicons = [];
+  function setFavicon(active) {
+    // Collect existing favicons if we haven't already
+    if (originalFavicons.length === 0) {
+      document.querySelectorAll("link[rel~='icon']").forEach(link => {
+        originalFavicons.push({ el: link, href: link.href });
+      });
+    }
+
+    if (active) {
+      // Remove original icons temporarily to ensure ours takes precedence
+      document.querySelectorAll("link[rel~='icon']").forEach(link => link.remove());
+      
+      let targetLink = document.getElementById("friction-favicon");
+      if (!targetLink) {
+        targetLink = document.createElement("link");
+        targetLink.id = "friction-favicon";
+        targetLink.rel = "icon";
+        document.head.appendChild(targetLink);
+      }
+      targetLink.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🎯</text></svg>';
+    } else {
+      // Restore original icons
+      const targetLink = document.getElementById("friction-favicon");
+      if (targetLink) targetLink.remove();
+
+      originalFavicons.forEach(icon => {
+        if (!document.head.contains(icon.el)) {
+          document.head.appendChild(icon.el);
+        }
+        icon.el.href = icon.href;
+      });
+    }
+  }
 
   // ── Update UI ──────────────────────────────────────────────
   function updateUI(session) {
@@ -458,6 +574,8 @@
       const timeStr = formatTime(remaining);
       timerValue.textContent = timeStr;
       widgetTimer.textContent = timeStr;
+      
+      setFavicon(true);
     } else {
       statusBadge.className = "status-badge inactive";
       statusText.textContent = "Inactive";
@@ -465,6 +583,8 @@
       btnStart.classList.remove("hidden");
       btnEnd.classList.add("hidden");
       widgetTimer.textContent = "00:00";
+      
+      setFavicon(false);
     }
   }
 
@@ -526,22 +646,19 @@
     });
   });
 
-  // Close panel
+  // Close panel globally
   btnClose.addEventListener("click", () => {
-    panel.style.display = "none";
-    widget.classList.remove("visible");
+    saveState({ isVisible: false });
   });
 
-  // Minimize to widget (timer only)
+  // Minimize to widget (timer only) globally
   btnMinimize.addEventListener("click", () => {
-    panel.style.display = "none";
-    widget.classList.add("visible");
+    saveState({ mode: 'mini' });
   });
 
-  // Expand widget back to full panel
+  // Expand widget back to full panel globally
   widgetExpand.addEventListener("click", (e) => {
     e.stopPropagation();
-    widget.classList.remove("visible");
-    panel.style.display = "flex";
+    saveState({ mode: 'full' });
   });
 })();

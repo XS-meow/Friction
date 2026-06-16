@@ -321,23 +321,55 @@ chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener((info) => {
 
 // ── In-Page Panel (Content Script Injection) ─────────────────
 
-// When extension icon is clicked, inject the floating panel into the active tab
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab?.id) return;
-
-  // Skip chrome:// and other protected pages
-  if (!tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
-    console.log("[Friction] Cannot inject into this page:", tab.url);
-    return;
-  }
-
+async function injectPanel(tabId) {
+  if (!tabId) return;
   try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
+      return;
+    }
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["content.js"],
     });
-    console.log("[Friction] Panel injected into tab:", tab.id);
   } catch (err) {
-    console.error("[Friction] Failed to inject panel:", err);
+    // Ignore errors for restricted tabs
+  }
+}
+
+// Auto-inject on tab switch if panel is globally visible
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  const { frictionPanelState } = await chrome.storage.local.get("frictionPanelState");
+  if (frictionPanelState?.isVisible) {
+    injectPanel(activeInfo.tabId);
+  }
+});
+
+// Auto-inject on page load if panel is globally visible
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete') {
+    const { frictionPanelState } = await chrome.storage.local.get("frictionPanelState");
+    if (frictionPanelState?.isVisible) {
+      injectPanel(tabId);
+    }
+  }
+});
+
+// Toggle global visibility on extension icon click
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+  
+  const { frictionPanelState } = await chrome.storage.local.get("frictionPanelState");
+  const isVisible = !(frictionPanelState?.isVisible);
+  
+  const newState = {
+    ...(frictionPanelState || { mode: 'full', position: { top: '16px', left: 'auto', right: '16px' }, widgetPosition: { top: 'auto', left: 'auto', bottom: '20px', right: '20px' } }),
+    isVisible
+  };
+  
+  await chrome.storage.local.set({ frictionPanelState: newState });
+
+  if (isVisible) {
+    injectPanel(tab.id);
   }
 });
