@@ -17,8 +17,6 @@
   const distractionsCount = document.getElementById("distractions-count");
   const overridesCount = document.getElementById("overrides-count");
 
-  let updateInterval = null;
-
   // ── Format mm:ss ──────────────────────────────────────────
   function formatTime(ms) {
     if (ms <= 0) return "00:00";
@@ -47,11 +45,6 @@
       timerDisplay.classList.remove("visible");
       btnStart.classList.remove("hidden");
       btnEnd.classList.add("hidden");
-
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-      }
     }
   }
 
@@ -76,6 +69,8 @@
   }
 
   // ── Refresh Loop ──────────────────────────────────────────
+  // Polls background every second for session state.
+  // NEVER cleared — runs for the entire lifetime of the popup.
   function startRefresh() {
     const refresh = () => {
       chrome.runtime.sendMessage({ action: "getSession" }, (session) => {
@@ -88,12 +83,11 @@
     };
 
     refresh();
-    updateInterval = setInterval(refresh, 1000);
+    setInterval(refresh, 1000);
   }
 
-  // ── Actions ───────────────────────────────────────────────
-
-  window.handleStart = function () {
+  // ── Actions (attached via addEventListener, not inline onclick) ─
+  btnStart.addEventListener("click", function () {
     btnStart.disabled = true;
     btnStart.textContent = "Starting...";
 
@@ -111,9 +105,9 @@
         btnStart.textContent = "▶ Start 10-min session";
       }
     );
-  };
+  });
 
-  window.handleEnd = function () {
+  btnEnd.addEventListener("click", function () {
     btnEnd.disabled = true;
     btnEnd.textContent = "Ending...";
 
@@ -128,7 +122,7 @@
       btnEnd.disabled = false;
       btnEnd.textContent = "■ End session";
     });
-  };
+  });
 
   // ── Initialize ────────────────────────────────────────────
   startRefresh();

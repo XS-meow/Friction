@@ -5,6 +5,7 @@ import { createSession, getActiveSession, completeSession } from "@/lib/supabase
 import {
   startExtensionSession,
   endExtensionSession,
+  getExtensionSession,
   pingExtension,
 } from "@/lib/extension";
 
@@ -12,11 +13,13 @@ const SESSION_DURATION = 10; // minutes
 
 export default function Home() {
   const [isActive, setIsActive] = useState(false);
+  const [endTime, setEndTime] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [extensionConnected, setExtensionConnected] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Format mm:ss ────────────────────────────────────────
   const formatTime = (ms: number) => {
@@ -27,49 +30,94 @@ export default function Home() {
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   };
 
-  // ── Check extension connectivity ────────────────────────
+  // ── Sync with extension ─────────────────────────────────
+  // Poll the extension every 2 seconds to stay in sync.
+  // If a session was started/ended from the popup, the
+  // dashboard will pick it up.
+  const syncWithExtension = useCallback(async () => {
+    const extSession = await getExtensionSession();
+    if (!extSession) return;
+
+    if (extSession.isActive && extSession.endTime && extSession.endTime > Date.now()) {
+      // Extension has an active session — sync our state
+      if (!isActive || endTime !== extSession.endTime) {
+        setIsActive(true);
+        setEndTime(extSession.endTime);
+      }
+    } else if (isActive && !extSession.isActive) {
+      // Extension ended the session (from popup or alarm) — sync
+      setIsActive(false);
+      setEndTime(null);
+      setTimeRemaining(0);
+      setSessionId(null);
+    }
+  }, [isActive, endTime]);
+
+  // ── Check extension connectivity + initial sync ─────────
   useEffect(() => {
-    pingExtension().then(setExtensionConnected);
+    pingExtension().then((connected) => {
+      setExtensionConnected(connected);
+      if (connected) {
+        syncWithExtension();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Check for existing active session on load ───────────
+  // ── Periodic sync with extension ────────────────────────
+  useEffect(() => {
+    syncRef.current = setInterval(() => {
+      syncWithExtension();
+    }, 2000);
+
+    return () => {
+      if (syncRef.current) clearInterval(syncRef.current);
+    };
+  }, [syncWithExtension]);
+
+  // ── Check for existing active session in Supabase on load ─
   useEffect(() => {
     getActiveSession().then((session) => {
       if (session) {
-        const endTime =
+        const sessionEndTime =
           new Date(session.start_time).getTime() +
           session.duration_minutes * 60 * 1000;
-        const remaining = endTime - Date.now();
+        const remaining = sessionEndTime - Date.now();
 
         if (remaining > 0) {
           setIsActive(true);
           setSessionId(session.id || null);
-          setTimeRemaining(remaining);
+          setEndTime(sessionEndTime);
         }
       }
     });
   }, []);
 
-  // ── Countdown timer ─────────────────────────────────────
+  // ── Countdown timer (computed from endTime) ─────────────
   useEffect(() => {
-    if (isActive && timeRemaining > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeRemaining((prev) => {
-          const next = prev - 1000;
-          if (next <= 0) {
-            handleEnd();
-            return 0;
-          }
-          return next;
-        });
-      }, 1000);
+    if (isActive && endTime) {
+      // Compute remaining time from endTime — single source of truth
+      const tick = () => {
+        const remaining = endTime - Date.now();
+        if (remaining <= 0) {
+          setTimeRemaining(0);
+          handleEnd();
+        } else {
+          setTimeRemaining(remaining);
+        }
+      };
+
+      tick(); // immediate first tick
+      timerRef.current = setInterval(tick, 1000);
+    } else {
+      setTimeRemaining(0);
     }
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [isActive, endTime]);
 
   // ── Start Session ───────────────────────────────────────
   const handleStart = useCallback(async () => {
@@ -80,12 +128,15 @@ export default function Home() {
       const session = await createSession(SESSION_DURATION);
       if (session?.id) setSessionId(session.id);
 
-      // 2. Notify extension
-      await startExtensionSession(SESSION_DURATION);
+      // 2. Start in extension and use its endTime as source of truth
+      const extSession = await startExtensionSession(SESSION_DURATION);
 
-      // 3. Update local state
+      // 3. Use extension's endTime for perfect sync, fallback to computed
+      const sessionEndTime = extSession?.endTime ?? (Date.now() + SESSION_DURATION * 60 * 1000);
+
+      // 4. Update local state
       setIsActive(true);
-      setTimeRemaining(SESSION_DURATION * 60 * 1000);
+      setEndTime(sessionEndTime);
     } catch (err) {
       console.error("[Friction] Failed to start session:", err);
     } finally {
@@ -108,6 +159,7 @@ export default function Home() {
 
       // 3. Update local state
       setIsActive(false);
+      setEndTime(null);
       setTimeRemaining(0);
       setSessionId(null);
 

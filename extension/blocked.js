@@ -16,6 +16,7 @@
   const progressRing = document.getElementById("progress-ring");
   const countdownLabel = document.getElementById("countdown-label");
   const btnProceed = document.getElementById("btn-proceed");
+  const btnGoBack = document.getElementById("btn-go-back");
 
   // ── Parse the blocked URL from query params ───────────────
   const params = new URLSearchParams(window.location.search);
@@ -65,35 +66,46 @@
     }
   }, 1000);
 
-  // ── Actions ───────────────────────────────────────────────
+  // ── Actions (attached via addEventListener, not inline onclick) ─
 
-  // Go back — close the tab or navigate back
-  window.goBack = function () {
-    // Try to go back in history, or close the tab
+  // Go back — navigate to new tab or close the tab
+  btnGoBack.addEventListener("click", function () {
+    // Since the page was loaded via redirect, history.back() would just
+    // re-trigger the blocked redirect. Instead, navigate to a safe page
+    // or close the tab.
     if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      window.close();
+      // Go back twice to skip the redirect entry
+      window.history.go(-2);
     }
-  };
+    // Fallback: replace with new tab page after a brief delay
+    // (in case history.go didn't work or there's nothing to go back to)
+    setTimeout(() => {
+      // Try to close the tab; if that fails, navigate to new tab
+      try {
+        window.close();
+      } catch {
+        window.location.replace("chrome://newtab");
+      }
+    }, 200);
+  });
 
-  // Proceed anyway — log the override and navigate to the blocked URL
-  window.proceedAnyway = function () {
-    // Log the override
-    if (chrome?.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({
-        action: "logOverride",
-        url: blockedUrl,
-      });
-    }
+  // Proceed anyway — log the override, wait for blocking to be disabled, then navigate
+  btnProceed.addEventListener("click", function () {
+    btnProceed.disabled = true;
+    btnProceed.textContent = "Redirecting...";
 
-    // Navigate to the original URL
-    // We need to temporarily disable blocking for this navigation.
-    // The simplest approach: open the URL after a brief delay to let
-    // the override message propagate, and use the redirect URL with
-    // a bypass flag.
-    if (blockedUrl) {
-      window.location.href = blockedUrl;
-    }
-  };
+    // Log the override (fire-and-forget, no need to wait)
+    chrome.runtime.sendMessage({ action: "logOverride", url: blockedUrl });
+
+    // Ask background to disable blocking, WAIT for confirmation, then navigate
+    chrome.runtime.sendMessage(
+      { action: "temporaryBypass", url: blockedUrl },
+      function (response) {
+        // Background has confirmed rules are removed — safe to navigate now
+        if (blockedUrl) {
+          window.location.replace(blockedUrl);
+        }
+      }
+    );
+  });
 })();

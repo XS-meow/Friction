@@ -5,7 +5,7 @@
  * Friction extension from the Next.js dashboard.
  */
 
-const EXTENSION_ID = process.env.NEXT_PUBLIC_EXTENSION_ID || "";
+const EXTENSION_ID = (process.env.NEXT_PUBLIC_EXTENSION_ID || "").trim();
 
 /**
  * Check if we're running in a Chrome browser that supports
@@ -55,8 +55,8 @@ export async function sendToExtension<T = unknown>(
  */
 export async function startExtensionSession(
   durationMinutes: number
-): Promise<unknown> {
-  return sendToExtension({
+): Promise<ExtensionSession | null> {
+  return sendToExtension<ExtensionSession>({
     action: "startSession",
     duration: durationMinutes,
   });
@@ -67,6 +67,20 @@ export async function startExtensionSession(
  */
 export async function endExtensionSession(): Promise<unknown> {
   return sendToExtension({ action: "endSession" });
+}
+
+/**
+ * Get the current session state from the extension.
+ */
+export interface ExtensionSession {
+  isActive: boolean;
+  startTime?: number;
+  durationMinutes?: number;
+  endTime?: number;
+}
+
+export async function getExtensionSession(): Promise<ExtensionSession | null> {
+  return sendToExtension<ExtensionSession>({ action: "getSession" });
 }
 
 /**

@@ -242,6 +242,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { distractionLog = [] } = await chrome.storage.local.get("distractionLog");
         return distractionLog;
 
+      case "temporaryBypass": {
+        // Disable blocking rules — caller will navigate after receiving response
+        await disableBlocking();
+
+        // Re-enable blocking after a delay (5 seconds to allow page to load)
+        setTimeout(async () => {
+          const currentSession = await getSession();
+          if (currentSession.isActive && currentSession.endTime > Date.now()) {
+            await enableBlocking();
+            console.log("[Friction] Blocking re-enabled after temporary bypass.");
+          }
+        }, 5000);
+        return { success: true };
+      }
+
       default:
         return { error: "Unknown action" };
     }
